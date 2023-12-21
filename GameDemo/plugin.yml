@@ -1,0 +1,10 @@
+name: GameDemo
+version: 1.0
+main: GameDemo.Main
+description: GameDemo
+author: Sharkmc.cn
+api-version: 1.16
+
+commands:
+   loadlevel:
+   savelevel:
