@@ -15,6 +15,7 @@ import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
 import org.bukkit.event.EventHandler;
@@ -25,6 +26,7 @@ import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -38,10 +40,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import GameDemo.Helper.AbilityMode;
 import GameDemo.Helper.Detector;
 import GameDemo.Helper.Fan;
 import GameDemo.Helper.PlayerData;
-import GameDemo.Helper.ToolMode;
 import GameDemo.Helper.Vapor;
 
 public class Main extends JavaPlugin implements Listener {
@@ -68,7 +70,7 @@ public class Main extends JavaPlugin implements Listener {
 			public void run() {
 				boolean flag = true;
 				for(Player p : Bukkit.getOnlinePlayers()) {
-					p.sendActionBar(Utils.Chat("&a&lCurrent Mode: &b&l" + data.get(p).mode.name + " &7(Press 'Q' to switch)"));
+					p.sendActionBar(Utils.Chat("&a&lCurrent Mode: &b&l" + data.get(p).abilityMode.name + " &7(Press 'Q' to switch)"));
 					if(p.getGameMode() == GameMode.SURVIVAL) {
 						flag = false;
 					}
@@ -190,19 +192,26 @@ public class Main extends JavaPlugin implements Listener {
 		p.getInventory().clear();
 		data.put(p, new PlayerData(p.getName()));
 		
-		if(Main.isPlaying) {
-			p.setGameMode(GameMode.SPECTATOR);
-			p.teleport(new Location(Bukkit.getWorld("world"), 0.5, 32, 0.5, 180, 0));
-		}else {
-			p.setGameMode(GameMode.SURVIVAL);
-			p.teleport(new Location(Bukkit.getWorld("world"), 100.5, 129, 0.5, 180, 0));
-			ItemStack start = new ItemStack(Material.SLIME_BALL);
-			ItemMeta meta = start.getItemMeta();
-			meta.setDisplayName(Utils.Chat("&aPress &f'Q' &ato start!"));
-			start.setItemMeta(meta);
-			p.getInventory().setItem(4, start);
-			p.updateInventory();
+		Main.isPlaying = true;
+		for(Player ps : Bukkit.getOnlinePlayers()) {
+			ps.setGameMode(GameMode.SPECTATOR);
 		}
+		p.setGameMode(GameMode.SURVIVAL);
+		Utils.loadLevel(1);
+		
+//		if(Main.isPlaying) {
+//			p.setGameMode(GameMode.SPECTATOR);
+//			p.teleport(new Location(Bukkit.getWorld("world"), 0.5, 32, 0.5, 180, 0));
+//		}else {
+//			p.setGameMode(GameMode.SURVIVAL);
+//			p.teleport(new Location(Bukkit.getWorld("world"), 100.5, 129, 0.5, 180, 0));
+//			ItemStack start = new ItemStack(Material.SLIME_BALL);
+//			ItemMeta meta = start.getItemMeta();
+//			meta.setDisplayName(Utils.Chat("&aPress &f'Q' &ato start!"));
+//			start.setItemMeta(meta);
+//			p.getInventory().setItem(4, start);
+//			p.updateInventory();
+//		}
 	}
 	
 	@EventHandler
@@ -212,57 +221,62 @@ public class Main extends JavaPlugin implements Listener {
 	
 	@EventHandler
 	public static void ProjectileLaunchEvent(ProjectileLaunchEvent e) {
-		if(e.getEntityType() != EntityType.SNOWBALL) return;
-		
-		Snowball snowball = (Snowball) e.getEntity();
-		Player p = (Player) snowball.getShooter();
-		
-		if(p.getGameMode() != GameMode.SURVIVAL) return;
-		
-		Utils.processSnowball(p, snowball);
+		if(e.getEntityType() == EntityType.SNOWBALL) {
+			Snowball snowball = (Snowball) e.getEntity();
+			Player p = (Player) snowball.getShooter();
+			
+			if(p.getGameMode() != GameMode.SURVIVAL) return;
+			
+			Utils.processSnowball(p, snowball);
+		}else if(e.getEntityType() == EntityType.FIREBALL) {
+			Fireball fireball = (Fireball) e.getEntity();
+			Player p = (Player) fireball.getShooter();
+			
+			if(p.getGameMode() != GameMode.SURVIVAL) return;
+			
+			Utils.processFireball(p, fireball);
+		}
 	}
 	
 	@EventHandler
 	public static void ProjectileHitEvent(ProjectileHitEvent e) {
-		if(e.getEntityType() != EntityType.SNOWBALL) return;
+		if(e.getEntityType() != EntityType.FIREBALL) return;
 		
 		Block b = e.getHitBlock();
 		if(b.getType() != Material.ICE) return;
 		
-		Snowball snowball = (Snowball) e.getEntity();
-		Player p = (Player) snowball.getShooter();
+		Fireball fireball = (Fireball) e.getEntity();
+		Player p = (Player) fireball.getShooter();
 		
 		if(p.getGameMode() != GameMode.SURVIVAL) return;
 		
 		PlayerData pd = data.get(p);
 		
-		if(pd.mode == ToolMode.WATER) {
-			if(Utils.getAllAdhereBlockLocations(b, 200, 256, 0).size() > 1) { // is connected with other ice blocks
-				return;
-			}
-			
-			b.setType(Material.AIR);
-			int height = 0;
-			List<Location> locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY(), b.getY() - 2);
-			if(locs.size() > 20) {
-				b.setType(Material.ICE);
-				return;
-			}
-			while(height < 20) {
-				locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
-				if(locs.size() > 20) {
-					height--;
-					break;
-				}
-				height++;
-			}
-			locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
-			for(Location loc : locs) {
-				loc.getBlock().setType(Material.WATER);
-				loc.getWorld().spawnParticle(Particle.WATER_DROP, loc, 10);
-			}
-			p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_SWIM, 1F, 2F);
+		if(Utils.getAllAdhereBlockLocations(b, 200, 256, 0).size() > 1) { // is connected with other ice blocks
+			return;
 		}
+		
+		b.setType(Material.AIR);
+		int height = 0;
+		List<Location> locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY(), b.getY() - 2);
+		if(locs.size() > 20) {
+			b.setType(Material.ICE);
+			return;
+		}
+		while(height < 20) {
+			locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
+			if(locs.size() > 20) {
+				height--;
+				break;
+			}
+			height++;
+		}
+		locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
+		for(Location loc : locs) {
+			loc.getBlock().setType(Material.WATER);
+			loc.getWorld().spawnParticle(Particle.WATER_DROP, loc, 10);
+		}
+		p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_SWIM, 1F, 2F);
 	}
 	
 	@EventHandler
@@ -303,14 +317,6 @@ public class Main extends JavaPlugin implements Listener {
 		Player p = e.getPlayer();
 		if(p.getGameMode() != GameMode.SURVIVAL) return;
 		
-		if(e.getItemDrop().getItemStack().getType() == Material.ENDER_EYE) {
-			e.getItemDrop().remove();
-			Utils.clearLevel();
-			Utils.loadLevel(currentLevel);
-			Main.isPlaying = true;
-			return;
-		}
-		
 		if(e.getItemDrop().getItemStack().getType() == Material.SLIME_BALL) {
 			e.getItemDrop().remove();
 			Main.isPlaying = true;
@@ -325,12 +331,30 @@ public class Main extends JavaPlugin implements Listener {
 		e.setCancelled(true);
 		
 		PlayerData pd = data.get(p);
-		if(pd.mode == ToolMode.WATER) {
-			pd.mode = ToolMode.ICE;
-		}else if(pd.mode == ToolMode.ICE) {
-			pd.mode = ToolMode.VAPOR;
+		if(pd.abilityMode == AbilityMode.HOT) {
+			pd.abilityMode = AbilityMode.COLD;
+			new BukkitRunnable() {
+				@Override
+				public void run() {
+					for(ItemStack item : p.getInventory().getContents()) {
+						if(item != null && item.getType() == Material.FIRE_CHARGE) {
+							item.setType(Material.SNOWBALL);
+						}
+					}
+				}
+			}.runTaskLater(Main.getPlugin(Main.class), 1L);
 		}else {
-			pd.mode = ToolMode.WATER;
+			pd.abilityMode = AbilityMode.HOT;
+			new BukkitRunnable() {
+				@Override
+				public void run() {
+					for(ItemStack item : p.getInventory().getContents()) {
+						if(item != null && item.getType() == Material.SNOWBALL) {
+							item.setType(Material.FIRE_CHARGE);
+						}
+					}
+				}
+			}.runTaskLater(Main.getPlugin(Main.class), 1L);
 		}
 		
 		p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1F, 2F);
@@ -385,6 +409,28 @@ public class Main extends JavaPlugin implements Listener {
 		if(p.getGameMode() == GameMode.CREATIVE && e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getType() == Material.REDSTONE_LAMP && p.isSneaking()) {
 			Utils.processRedstoneLamp(e.getClickedBlock().getLocation());
 		}
+		
+		if(p.getItemInHand() != null) {
+			if(p.getItemInHand().getType() == Material.FIRE_CHARGE) {
+				e.setCancelled(true);
+				
+				if(e.getAction().toString().contains("RIGHT")) {
+					Fireball fireball = p.launchProjectile(Fireball.class);
+					fireball.setVelocity(fireball.getVelocity().multiply(2));
+					ItemStack item = p.getItemInHand();
+					item.setAmount(item.getAmount() - 1);
+					p.setItemInHand(item);
+				}
+			}else if(p.getItemInHand().getType() == Material.MAP) {
+				if(e.getAction().toString().contains("RIGHT")) {
+					e.setCancelled(true);
+					
+					Utils.clearLevel();
+					Utils.loadLevel(currentLevel);
+					Main.isPlaying = true;
+				}
+			}
+		}
 	}
 	
 	@EventHandler
@@ -392,6 +438,11 @@ public class Main extends JavaPlugin implements Listener {
 		if(e.getEntityType() == EntityType.PLAYER && e.getCause() == DamageCause.FALL) {
 			e.setCancelled(true);
 		}
+	}
+	
+	@EventHandler
+	public static void ExplosionPrimeEvent(ExplosionPrimeEvent e) {
+		e.setCancelled(true);
 	}
 	
 }

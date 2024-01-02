@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -29,6 +30,7 @@ import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.FallingBlock;
+import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
 import org.bukkit.inventory.ItemStack;
@@ -101,24 +103,26 @@ public class Utils {
 	}
 	
 	public static List<Location> getAllAdhereBlockLocations(Block b, int maxAmount, int maxY, int minY) {
-		List<Location> locs = new ArrayList<>();
-		locs.add(b.getLocation());
+		List<Location> foundLocations = new ArrayList<>();
+		Queue<Location> locationsToExplore = new LinkedList<>();
+		foundLocations.add(b.getLocation());
+		locationsToExplore.add(b.getLocation());
 		
-		LinkedList<Location> q = new LinkedList<>();
-		q.add(b.getLocation());
-		while(!q.isEmpty() && locs.size() < maxAmount) {
-			Location loc = q.removeFirst();
-			for(Location adhere : Utils.getAdhereBlockLocations(loc, loc.getBlock().getType())) {
+		while(!locationsToExplore.isEmpty() && foundLocations.size() < maxAmount) {
+			Location currentLoc = locationsToExplore.poll();
+			
+			for(Location adhere : Utils.getAdhereBlockLocations(currentLoc, currentLoc.getBlock().getType())) {
 				if(adhere.getBlockY() > maxY || adhere.getBlockY() < minY) {
 					continue;
 				}
-				if(!locs.contains(adhere)) {
-					locs.add(adhere);
-					q.add(adhere);
+				if(!foundLocations.contains(adhere)) {
+					foundLocations.add(adhere);
+					locationsToExplore.add(adhere);
 				}
 			}
 		}
-		return locs;
+		
+		return foundLocations;
 	}
 	
 	public static void replaceAllAdhereBlocks(Block from, Material to, int maxY, int minY, Particle particle, int particleAmount) {
@@ -141,81 +145,99 @@ public class Utils {
 						this.cancel();
 						return;
 					}
-					if(pd.mode == ToolMode.ICE) {
-						if(ball.getLocation().getBlock().getType() == Material.WATER) {
-							this.cancel();
-							ball.remove();
-							Utils.replaceAllAdhereBlocks(ball.getLocation().getBlock(), Material.ICE, 256, 0, Particle.FIREWORKS_SPARK, 20);
-							p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1F, 1.5F);
-						}
-					}else if(pd.mode == ToolMode.VAPOR) {
-						if(ball.getLocation().getBlock().getType() == Material.WATER) {
-							this.cancel();
-							ball.remove();
-							Vapor v = new Vapor(Utils.getAdhereBlockLocations(ball.getLocation(), Material.WATER), 0.25D, ball.getLocation().getY() + 20F);
-							Main.vapors.add(v);
-							Utils.replaceAllAdhereBlocks(ball.getLocation().getBlock(), Material.AIR, 256, 0, Particle.FIREWORKS_SPARK, 20);
-							p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1F, 1.5F);
-						}
-					}else if(pd.mode == ToolMode.WATER) {
-						for(Vapor v : Main.vapors) {
-							for(Location vl : v.locs) {
-								if(vl.distanceSquared(ball.getLocation()) < 3) {
-									ball.remove();
-									p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1F, 1.5F);
-									for(Location l : v.locs) {
-										for(int i = 0;i < 8;i++) {
-											l.getWorld().spawnParticle(Particle.FALLING_WATER, l.clone().add(Main.rand.nextFloat() * 2 - 1F, Main.rand.nextFloat() * 2 - 1F, Main.rand.nextFloat() * 2 - 1F),
-													5, Main.rand.nextFloat() / 2.0F - 0.5, 0.05, Main.rand.nextFloat() / 2.0F - 0.5);
-										}
+					
+					if(ball.getLocation().getBlock().getType() == Material.WATER) {
+						this.cancel();
+						ball.remove();
+						Utils.replaceAllAdhereBlocks(ball.getLocation().getBlock(), Material.ICE, 256, 0, Particle.FIREWORKS_SPARK, 20);
+						p.playSound(p.getLocation(), Sound.BLOCK_GLASS_BREAK, 1F, 1.5F);
+					}
+					
+					for(Vapor v : Main.vapors) {
+						for(Location vl : v.locs) {
+							if(vl.distanceSquared(ball.getLocation()) < 3) {
+								ball.remove();
+								p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1F, 1.5F);
+								for(Location l : v.locs) {
+									for(int i = 0;i < 8;i++) {
+										l.getWorld().spawnParticle(Particle.FALLING_WATER, l.clone().add(Main.rand.nextFloat() * 2 - 1F, Main.rand.nextFloat() * 2 - 1F, Main.rand.nextFloat() * 2 - 1F),
+												5, Main.rand.nextFloat() / 2.0F - 0.5, 0.05, Main.rand.nextFloat() / 2.0F - 0.5);
 									}
-									
-									int height = 0;
-									Location ballLoc = ball.getLocation();
-									while(ballLoc.getBlockY() > 0 && ballLoc.getBlock().getType() == Material.AIR) {
-										ballLoc.add(0, -1, 0);
-										height++;
-									}
-									
-									BukkitTask bt = new BukkitRunnable() {
-										@Override
-										public void run() {
-											for(Location l : v.locs) {
-												while(l.getBlockY() > 0 && l.getBlock().getType() == Material.AIR) {
-													l.add(0, -1, 0);
-												}
-												l.add(0, 1, 0);
-												Block b = l.getBlock();
-												int height = 0;
-												List<Location> locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY(), b.getY() - 2);
-												if(locs.size() > 20) {
-													continue;
-												}
-												while(height < 20) {
-													locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
-													if(locs.size() > 20) {
-														height--;
-														break;
-													}
-													height++;
-												}
-												locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
-												for(Location loc : locs) {
-													loc.getBlock().setType(Material.WATER);
-													loc.getWorld().spawnParticle(Particle.WATER_DROP, loc, 10);
-												}
-												p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_SWIM, 1F, 2F);
-											}
-										}
-									}.runTaskLater(Main.getPlugin(Main.class), (long) ((double) height * 2.5) - Math.max(0, height - 6)); // calc time to fall
-									Main.runnables.add(bt);
-									Main.vapors.remove(v);
-									// spawn water particles and add water
-									this.cancel();
-									return;
 								}
+								
+								int height = 0;
+								Location ballLoc = ball.getLocation();
+								while(ballLoc.getBlockY() > 0 && ballLoc.getBlock().getType() == Material.AIR) {
+									ballLoc.add(0, -1, 0);
+									height++;
+								}
+								
+								BukkitTask bt = new BukkitRunnable() {
+									@Override
+									public void run() {
+										for(Location l : v.locs) {
+											while(l.getBlockY() > 0 && l.getBlock().getType() == Material.AIR) {
+												l.add(0, -1, 0);
+											}
+											l.add(0, 1, 0);
+											Block b = l.getBlock();
+											int height = 0;
+											List<Location> locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY(), b.getY() - 2);
+											if(locs.size() > 20) {
+												continue;
+											}
+											while(height < 20) {
+												locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
+												if(locs.size() > 20) {
+													height--;
+													break;
+												}
+												height++;
+											}
+											locs = Utils.getAllAdhereBlockLocations(b, 200, b.getY() + height, b.getY() - 2);
+											for(Location loc : locs) {
+												loc.getBlock().setType(Material.WATER);
+												loc.getWorld().spawnParticle(Particle.WATER_DROP, loc, 10);
+											}
+											p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_SWIM, 1F, 2F);
+										}
+									}
+								}.runTaskLater(Main.getPlugin(Main.class), (long) ((double) height * 2.5) - Math.max(0, height - 6)); // calc time to fall
+								Main.runnables.add(bt);
+								Main.vapors.remove(v);
+								// spawn water particles and add water
+								this.cancel();
+								return;
 							}
 						}
+					}
+				}catch(Exception ex) {
+					ex.printStackTrace();
+					this.cancel();
+				}
+			}
+		}.runTaskTimer(Main.getPlugin(Main.class), 1L, 1L);
+		Main.runnables.add(run);
+	}
+	
+	public static void processFireball(final Player p, final Fireball ball) {
+		final PlayerData pd = Main.data.get(p);
+		BukkitTask run = new BukkitRunnable() {
+			@Override
+			public void run() {
+				try {
+					if(ball == null || ball.isDead()) {
+						this.cancel();
+						return;
+					}
+					
+					if(ball.getLocation().getBlock().getType() == Material.WATER) {
+						this.cancel();
+						ball.remove();
+						Vapor v = new Vapor(Utils.getAdhereBlockLocations(ball.getLocation(), Material.WATER), 0.25D, ball.getLocation().getY() + 20F);
+						Main.vapors.add(v);
+						Utils.replaceAllAdhereBlocks(ball.getLocation().getBlock(), Material.AIR, 256, 0, Particle.FIREWORKS_SPARK, 20);
+						p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1F, 1.5F);
 					}
 				}catch(Exception ex) {
 					ex.printStackTrace();
@@ -633,9 +655,9 @@ public class Utils {
 						p.getInventory().clear();
 						p.getInventory().addItem(new ItemStack(Material.SNOWBALL, json.get("snowballs").getAsInt()));
 						
-						ItemStack eye = new ItemStack(Material.ENDER_EYE);
+						ItemStack eye = new ItemStack(Material.MAP);
 						ItemMeta meta = eye.getItemMeta();
-						meta.setDisplayName(Utils.Chat("&aPress &f'Q' &ato reset the level!"));
+						meta.setDisplayName(Utils.Chat("&aReset Level"));
 						eye.setItemMeta(meta);
 						p.getInventory().setItem(8, eye);
 						p.updateInventory();
